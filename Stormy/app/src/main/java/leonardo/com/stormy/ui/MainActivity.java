@@ -1,6 +1,7 @@
-package leonardo.com.stormy;
+package leonardo.com.stormy.ui;
 
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.drawable.Drawable;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
@@ -14,6 +15,7 @@ import android.widget.ProgressBar;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
@@ -21,6 +23,12 @@ import java.io.IOException;
 
 import butterknife.BindView;
 import butterknife.ButterKnife;
+import butterknife.OnClick;
+import leonardo.com.stormy.R;
+import leonardo.com.stormy.weather.Current;
+import leonardo.com.stormy.weather.Day;
+import leonardo.com.stormy.weather.Forecast;
+import leonardo.com.stormy.weather.Hour;
 import okhttp3.Call;
 import okhttp3.Callback;
 import okhttp3.OkHttpClient;
@@ -30,7 +38,9 @@ import okhttp3.Response;
 public class MainActivity extends AppCompatActivity {
 
     public static final String TAG = MainActivity.class.getSimpleName();
-    private CurrentWeather mCurrentWeather;
+    public static final String DAILY_FORECAST = "DAILY_FORECAST";
+
+    private Forecast mForecast;
 
     @BindView(R.id.timeLabel) TextView mTimeLabel;
     @BindView(R.id.temperatureLabel) TextView mTemperatureLabel;
@@ -104,7 +114,7 @@ public class MainActivity extends AppCompatActivity {
                         Log.v(TAG, jsonData);
 
                         if (response.isSuccessful()) {
-                            mCurrentWeather = getCurrentDetails(jsonData);
+                            mForecast = parseForecastDetails(jsonData);
                             runOnUiThread(new Runnable() {
                                 @Override
                                 public void run() {
@@ -136,50 +146,117 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private void UpdateDisplay() {
-        Log.d(TAG, mCurrentWeather.getTemperature() + "");
-        Log.d(TAG, mCurrentWeather.getFormattedTime() + "");
-        Log.d(TAG, mCurrentWeather.getHumidity() + "");
-        Log.d(TAG, mCurrentWeather.getPrecipChance() + "");
-        Log.d(TAG, mCurrentWeather.getSummary() + "");
-        Log.d(TAG, mCurrentWeather.getIconId() + "");
+        Current current = mForecast.getCurrent();
+        //Log.d(TAG, current.getTemperature() + "");
+        //Log.d(TAG, current.getFormattedTime() + "");
+        //Log.d(TAG, current.getHumidity() + "");
+        //Log.d(TAG, current.getPrecipChance() + "");
+        //Log.d(TAG, current.getSummary() + "");
+        //Log.d(TAG, current.getIconId() + "");
 
-        String temp = mCurrentWeather.getTemperature() + "";
-        String time = "At " + mCurrentWeather.getFormattedTime() + " it will be";
-        String humidity = mCurrentWeather.getHumidity() + "";
-        String rain = mCurrentWeather.getPrecipChance() + "%";
-        String summary = mCurrentWeather.getSummary();
+        String temp = current.getTemperature() + "";
+        String time = "At " + current.getFormattedTime() + " it will be";
+        String humidity = current.getHumidity() + "";
+        String rain = current.getPrecipChance() + "%";
+        String summary = current.getSummary();
 
         mTemperatureLabel.setText(temp);
         mTimeLabel.setText(time);
         mHumidityValue.setText(humidity);
         mPrecipValue.setText(rain);
         mSummaryLabel.setText(summary);
-        Drawable drawable = ContextCompat.getDrawable(this, mCurrentWeather.getIconId());
+        Drawable drawable = ContextCompat.getDrawable(this, current.getIconId());
         mIconImageView.setImageDrawable(drawable);
-        mLocationLabel.setText(mCurrentWeather.getTimeZone());
+        mLocationLabel.setText(current.getTimeZone());
     }
 
-    private CurrentWeather getCurrentDetails(String jsonData) throws JSONException {
+    private Forecast parseForecastDetails(String jsonData) throws JSONException {
+
+        Forecast forecast = new Forecast();
+
+        forecast.setCurrent(getCurrentDetails(jsonData));
+
+        forecast.setHourlyForecast(getHourlyForecast(jsonData));
+        forecast.setDailyForecast(getDailyForecast(jsonData));
+
+        return forecast;
+    }
+
+    private Day[] getDailyForecast(String jsonData) throws JSONException{
+
+        JSONObject forecast  = new JSONObject(jsonData);
+        String timezone = forecast.getString("timezone");
+
+        JSONObject daily = forecast.getJSONObject("daily");
+        JSONArray data = daily.getJSONArray("data");
+
+        Day[] days = new Day[data.length()];
+
+        for(int i=0;i<data.length();i++){
+            JSONObject jsonDay = data.getJSONObject(i);
+            Day day = new Day();
+
+            day.setSummary(jsonDay.getString("summary"));
+            day.setIcon(jsonDay.getString("icon"));
+            day.setTemperatureMax(jsonDay.getDouble("temperatureMax"));
+            day.setTime(jsonDay.getLong("time"));
+            day.setTimezone(timezone);
+
+            days[i] = day;
+        }
+
+        return days;
+    }
+
+    private Hour[] getHourlyForecast(String jsonData) throws JSONException{
+
+        JSONObject forecast  = new JSONObject(jsonData);
+        String timezone = forecast.getString("timezone");
+
+        JSONObject hourly = forecast.getJSONObject("hourly");
+        JSONArray data = hourly.getJSONArray("data");
+
+        Hour[] hours = new Hour[data.length()];
+
+        for(int i=0;i<data.length();i++){
+            JSONObject jsonHour = data.getJSONObject(i);
+            Hour hour = new Hour();
+
+            hour.setSummary(jsonHour.getString("summary"));
+            hour.setTemperature(jsonHour.getDouble("temperature"));
+            hour.setIcon(jsonHour.getString("icon"));
+            hour.setTime(jsonHour.getLong("time"));
+            hour.setTimezone(timezone);
+
+            hours[i] = hour;
+        }
+
+        //Log.d(TAG, hours.toString());
+
+        return hours;
+    }
+
+    private Current getCurrentDetails(String jsonData) throws JSONException {
         JSONObject forecast  = new JSONObject(jsonData);
 
         String timezone = forecast.getString("timezone");
-        Log.i(TAG, "From JSON: " + timezone);
+        //Log.i(TAG, "From JSON: " + timezone);
 
         JSONObject currently = forecast.getJSONObject("currently");
 
-        CurrentWeather currentWeather = new CurrentWeather();
+        Current current = new Current();
 
-        currentWeather.setHumidity(currently.getDouble("humidity"));
-        currentWeather.setTime(currently.getLong("time"));
-        currentWeather.setIcon(currently.getString("icon"));
-        currentWeather.setPrecipChance(currently.getDouble("precipProbability"));
-        currentWeather.setSummary(currently.getString("summary"));
-        currentWeather.setTemperature(currently.getDouble("temperature"));
-        currentWeather.setTimeZone(timezone);
+        current.setHumidity(currently.getDouble("humidity"));
+        current.setTime(currently.getLong("time"));
+        current.setIcon(currently.getString("icon"));
+        current.setPrecipChance(currently.getDouble("precipProbability"));
+        current.setSummary(currently.getString("summary"));
+        current.setTemperature(currently.getDouble("temperature"));
+        current.setTimeZone(timezone);
 
-        Log.d(TAG, currentWeather.getFormattedTime());
+        //Log.d(TAG, current.getTemperature() + "");
 
-        return currentWeather;
+        return current;
     }
     private boolean isNetworkAvailable() {
         ConnectivityManager manager = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
@@ -198,4 +275,14 @@ public class MainActivity extends AppCompatActivity {
         AlertDialogFragment dialog = new AlertDialogFragment();
         dialog.show(getFragmentManager(), "error_dialog");
     }
+
+    @OnClick(R.id.dailyButton)
+    public void startDailyActivity(View v){
+        Intent intent = new Intent(this, DailyForecastActivity.class);
+
+        intent.putExtra(DAILY_FORECAST, mForecast.getDailyForecast());
+
+        startActivity(intent);
+    }
+
 }
